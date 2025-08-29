@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"io"
+	"log"
 	"os"
 	"strings"
 )
@@ -56,6 +57,30 @@ func (s *Store) Delete(key string) bool {
 		return false
 	}
 	return true
+}
+
+func (s *Store) Exists(key string) bool {
+	transformPath := s.pathTransformFunc(key)
+	_, err := os.Stat(transformPath.getFullPath() + "/" + transformPath.fileName)
+	return !os.IsNotExist(err)
+}
+
+func (s *Store) ReadStream(key string) error {
+	transformPath := s.pathTransformFunc(key)
+	f, err := os.Open(transformPath.getFullPath() + "/" + transformPath.fileName)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	buff := new(strings.Builder)
+	_, err = io.Copy(buff, f)
+	if err != nil {
+		return err
+	}
+	log.Printf("Read stream: %s", buff.String())
+
+	return nil
 }
 
 func (s *Store) writeStream(key string, r io.Reader) error {

@@ -23,3 +23,12 @@ func TestDelete(t *testing.T) {
 		t.Errorf("Failed to delete key")
 	}
 }
+
+func TestReadStream(t *testing.T) {
+	store := NewStore()
+
+	err := store.ReadStream("test_key")
+	if err != nil {
+		t.Errorf("Failed to read stream: %v", err)
+	}
+}
