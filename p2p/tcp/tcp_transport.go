@@ -1,18 +1,18 @@
 package tcp
 
 import (
+	"encoding/gob"
 	"errors"
 	"log"
 	"net"
 	"sync"
 
-	"github.com/a-ZINC/DistFile/p2p"
-	"github.com/a-ZINC/DistFile/p2p/decoder"
+	"github.com/a-ZINC/DistFile/p2p"	
 	"github.com/a-ZINC/DistFile/p2p/message"
 )
 
 type TCPPeer struct {
-	conn    net.Conn
+	net.Conn
 	inbound bool
 }
 
@@ -33,7 +33,7 @@ type TCPTransport struct {
 
 func NewTCPPeer(conn net.Conn, inbound bool) *TCPPeer {
 	return &TCPPeer{
-		conn:    conn,
+		Conn:   conn,
 		inbound: inbound,
 	}
 }
@@ -80,12 +80,15 @@ func (t *TCPTransport) handleConnection(conn net.Conn, inbound bool) {
 	}
 	if t.OnPeer != nil {
 		if err := t.OnPeer(peer); err != nil {
+			log.Printf("OnPeer error: %v", err)
 			return
 		}
 	}
 	for {
 		message := &message.Message{}
-		err := decoder.Decode(conn, message); 
+		log.Printf("Waiting to decode message from %v", conn.RemoteAddr())
+		err := gob.NewDecoder(conn).Decode(message)
+		log.Printf("Decoded message from %v: %v", conn.RemoteAddr(), message)
 		if err != nil {
 			log.Printf("Error decoding message: %v", err)
 			continue
@@ -126,17 +129,6 @@ func (t *TCPTransport) close(conn net.Conn) {
 --------------------------------------------------- TCPPeer ----------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------
 */
-
-func (p *TCPPeer) Close() error {
-	if err := p.conn.Close(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (p *TCPPeer) RemoteAddr() net.Addr {
-	return p.conn.RemoteAddr()
-}
 
 func (p *TCPPeer) IsInbound() bool {
 	return p.inbound

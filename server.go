@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
+	"io"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/a-ZINC/DistFile/p2p"
+	"github.com/a-ZINC/DistFile/p2p/message"
 	"github.com/a-ZINC/DistFile/p2p/tcp"
 	"github.com/a-ZINC/DistFile/store"
 )
@@ -24,6 +28,11 @@ type Server struct {
 
 	quitCh chan os.Signal
 	nodes  []string
+}
+
+type Payload struct {
+	Key   string
+	Value []byte
 }
 
 func NewServer(cfg ServerCfg, nodes ...string) *Server {
@@ -53,12 +62,24 @@ func (s *Server) Start() error {
 	for {
 		select {
 		case msg := <-s.cfg.transport.MSGChan:
-			log.Printf("Received message: %v", msg.Payload)
+			log.Printf("Received message1: %v", msg)
+			s.handleMessage(msg)
 		case <-s.quitCh:
 			s.cfg.transport.Close()
 			log.Printf("Server shutting down")
 			return nil
 		}
+	}
+}
+
+func (s *Server) handleMessage(msg *message.Message) {
+	log.Printf("Received message: %v", msg)
+
+	switch payload := msg.Payload.(type) {
+		case *Payload:
+			log.Printf("Storing key: %s, value size: %+v bytes", payload.Key, payload)
+		default:
+			log.Printf("Unknown message payload type: %T", payload)
 	}
 }
 
@@ -78,5 +99,41 @@ func (s *Server) StartNodes() error {
 			continue
 		}
 	}
+	return nil
+}
+
+func (s *Server) Broadcast(msg *message.Message) {
+	var peers []io.Writer
+	for _, peer := range s.cfg.transport.Peers {
+		log.Printf("Adding peer %v to broadcast list", peer.RemoteAddr())
+		peers = append(peers, peer)
+	}
+
+	writer := io.MultiWriter(peers...)
+	if err := gob.NewEncoder(writer).Encode(msg); err != nil {
+		log.Printf("Failed to broadcast message: %v", err)
+	}
+	log.Printf("Broadcasted message to %+v peers", peers)
+	log.Printf("Broadcasted message: %d", len(peers))
+}
+
+func (s *Server) SaveData(key string, r io.Reader) error {
+
+	buff := new(bytes.Buffer)
+	teeReader := io.TeeReader(r, buff)
+	if err := s.store.Write(key, teeReader); err != nil {
+		return err
+	}
+
+	payload := &Payload{
+		Key:   key,
+		Value: buff.Bytes(),
+	}
+	message := &message.Message{
+		From:    s.cfg.addr,
+		Payload: payload,
+	}
+	log.Printf("Broadcasting message: %v", message)
+	s.Broadcast(message)
 	return nil
 }
