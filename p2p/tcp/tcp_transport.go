@@ -40,6 +40,7 @@ func NewTCPPeer(conn net.Conn, inbound bool) *TCPPeer {
 func NewTCPTransport(cfg Config) *TCPTransport {
 	return &TCPTransport{
 		Config: cfg,
+		mu:    sync.RWMutex{},
 	}
 }
 
@@ -67,7 +68,7 @@ func (t *TCPTransport) handleAccept() {
 }
 
 func (t *TCPTransport) handleConnection(conn net.Conn) {
-	defer t.Close(conn)
+	defer t.close(conn)
 	peer := NewTCPPeer(conn, true)
 	log.Printf("Peer: %v", peer)
 	if err := t.Config.HandShake(peer); err != nil {
@@ -87,11 +88,13 @@ func (t *TCPTransport) handleConnection(conn net.Conn) {
 		}
 		t.MSGChan <- message
 	}
-
-	// Handle the incoming connection
 }
 
-func (t *TCPTransport) Close(conn net.Conn) {
+func (t *TCPTransport) Close() {
+	t.listener.Close()
+}
+
+func (t *TCPTransport) close(conn net.Conn) {
 	log.Printf("Closing peer: %v", t.peers[conn.RemoteAddr()])
 	if peer, ok := t.peers[conn.RemoteAddr()]; ok {
 		t.mu.Lock()
