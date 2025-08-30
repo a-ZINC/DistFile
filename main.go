@@ -3,21 +3,14 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/hex"
-	"fmt"
 	"log"
 	"strings"
-
-	"github.com/a-ZINC/DistFile/p2p"
+	
 	"github.com/a-ZINC/DistFile/p2p/handshake"
 	"github.com/a-ZINC/DistFile/p2p/message"
 	"github.com/a-ZINC/DistFile/p2p/tcp"
 	"github.com/a-ZINC/DistFile/store"
 )
-
-func onPeer(peer p2p.Peer) error {
-	fmt.Printf("New peer connected: %v\n", peer)
-	return nil
-}
 
 func pathTransform(key string, root string) *store.Path {
 	hash := sha1.Sum([]byte(key))
@@ -31,27 +24,39 @@ func pathTransform(key string, root string) *store.Path {
 	return &store.Path{FileName: hashStr, DirPath: strings.Join(pathFolder, "/"), DefaultRoot: root}
 }
 
-func main() {
-	fmt.Println("Hello, World!")
+func makeServer(addr string, nodes ...string) *Server {
 	cfg := tcp.Config{
-		ListenerAddr: ":3000",
+		ListenerAddr: addr,
 		HandShake:    handshake.NOPHandshake,
 		MSGChan:      make(chan *message.Message, 100),
-		OnPeer:       onPeer,
 	}
-
 	transport := tcp.NewTCPTransport(cfg)
 
-	servercfg := ServerCfg{
-		addr:              ":3000",
-		root:              "/tmp/store",
+	return NewServer(ServerCfg{
+		root:              "net_" + addr,
 		pathTransformFunc: pathTransform,
-		transport:        transport,
-	}
+		addr:              addr,
+		transport:         transport,
+	}, nodes...)
+}
 
-	server := NewServer(servercfg)
+func main() {
+	server1 := makeServer(":3000", "", "")
+	server2 := makeServer(":4000", ":3000")
+	server1.cfg.transport.Config.OnPeer = server1.OnPeer
+	server2.cfg.transport.Config.OnPeer = server2.OnPeer
 
-	if err := server.Start(); err != nil {
-		log.Printf("Failed to start server: %v", err)
-	}
+	go func() {
+		if err := server1.Start(); err != nil {
+			log.Printf("Failed to start server: %v", err)
+		}
+	}()
+
+	go func() {
+		if err := server2.Start(); err != nil {
+			log.Printf("Failed to start server: %v", err)
+		}
+	}()
+
+	select {}
 }

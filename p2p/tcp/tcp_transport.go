@@ -1,6 +1,7 @@
 package tcp
 
 import (
+	"errors"
 	"log"
 	"net"
 	"sync"
@@ -26,8 +27,8 @@ type TCPTransport struct {
 	Config
 	listener net.Listener
 
-	mu    sync.RWMutex
-	peers map[net.Addr]p2p.Peer
+	Mu    sync.RWMutex
+	Peers map[net.Addr]p2p.Peer
 }
 
 func NewTCPPeer(conn net.Conn, inbound bool) *TCPPeer {
@@ -40,7 +41,7 @@ func NewTCPPeer(conn net.Conn, inbound bool) *TCPPeer {
 func NewTCPTransport(cfg Config) *TCPTransport {
 	return &TCPTransport{
 		Config: cfg,
-		mu:    sync.RWMutex{},
+		Mu:    sync.RWMutex{},
 	}
 }
 
@@ -49,8 +50,9 @@ func (t *TCPTransport) ListenAndAccept() error {
 	if err != nil {
 		return err
 	}
+	log.Printf("Listening on %s", t.Config.ListenerAddr)
 	t.listener = listener
-	t.peers = make(map[net.Addr]p2p.Peer)
+	t.Peers = make(map[net.Addr]p2p.Peer)
 
 	go t.handleAccept()
 	return nil
@@ -59,18 +61,21 @@ func (t *TCPTransport) ListenAndAccept() error {
 func (t *TCPTransport) handleAccept() {
 	for {
 		conn, err := t.listener.Accept()
+		if errors.Is(err, net.ErrClosed) {
+			return
+		}
 		if err != nil {
 			log.Println("Error accepting connection:", err)
 			continue
 		}
-		go t.handleConnection(conn)
+		go t.handleConnection(conn, true)
 	}
 }
 
-func (t *TCPTransport) handleConnection(conn net.Conn) {
+func (t *TCPTransport) handleConnection(conn net.Conn, inbound bool) {
 	defer t.close(conn)
-	peer := NewTCPPeer(conn, true)
-	log.Printf("Peer: %v", peer)
+	peer := NewTCPPeer(conn, inbound)
+	
 	if err := t.Config.HandShake(peer); err != nil {
 	}
 	if t.OnPeer != nil {
@@ -78,7 +83,6 @@ func (t *TCPTransport) handleConnection(conn net.Conn) {
 			return
 		}
 	}
-	t.AddPeer(peer)
 	for {
 		message := &message.Message{}
 		err := decoder.Decode(conn, message); 
@@ -90,33 +94,50 @@ func (t *TCPTransport) handleConnection(conn net.Conn) {
 	}
 }
 
+func (t *TCPTransport) Dial(addr string) error {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return err
+	}
+	t.handleConnection(conn, false)
+	return nil
+}
+
 func (t *TCPTransport) Close() {
 	t.listener.Close()
 }
 
 func (t *TCPTransport) close(conn net.Conn) {
-	log.Printf("Closing peer: %v", t.peers[conn.RemoteAddr()])
-	if peer, ok := t.peers[conn.RemoteAddr()]; ok {
-		t.mu.Lock()
-		delete(t.peers, conn.RemoteAddr())
-		t.mu.Unlock()
+	if peer, ok := t.Peers[conn.RemoteAddr()]; ok {
+		t.Mu.Lock()
+		delete(t.Peers, conn.RemoteAddr())
+		t.Mu.Unlock()
 		if err := peer.Close(); err != nil {
 			log.Printf("Error closing conn: %v", err)
 		}
 	}
-	log.Printf("Closed peer: %v", t.peers[conn.RemoteAddr()])
+	log.Printf("Closed peer: %v", t.Peers[conn.RemoteAddr()])
 }
 
-func (t *TCPTransport) AddPeer(peer *TCPPeer) {
-	t.mu.Lock()
-	t.peers[peer.conn.RemoteAddr()] = peer
-	t.mu.Unlock()
-	log.Printf("Added Peer: %v", peer)
-}
+
+
+/*
+----------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------- TCPPeer ----------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+*/
 
 func (p *TCPPeer) Close() error {
 	if err := p.conn.Close(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (p *TCPPeer) RemoteAddr() net.Addr {
+	return p.conn.RemoteAddr()
+}
+
+func (p *TCPPeer) IsInbound() bool {
+	return p.inbound
 }
