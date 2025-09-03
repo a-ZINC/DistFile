@@ -51,10 +51,7 @@ func (s *Store) Clear() {
 func (s *Store) Delete(key string) bool {
 	transformPath := s.PathTransformFunc(key, s.DefaultRoot)
 	err := os.RemoveAll(transformPath.getFirstDir())
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 func (s *Store) Exists(key string) bool {
@@ -85,26 +82,25 @@ func (s *Store) readStream(key string) (io.Reader, error) {
 	return buff, nil
 }
 
-func (s *Store) Write(key string, data io.Reader) error {
+func (s *Store) Write(key string, data io.Reader) (int64, error) {
 	return s.writeStream(key, data)
 }
 
-func (s *Store) writeStream(key string, r io.Reader) error {
+func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 	transformPath := s.PathTransformFunc(key, s.DefaultRoot)
 	err := os.MkdirAll(transformPath.getFullPath(), 0755)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	f, err := os.Create(transformPath.getFullPath() + "/" + transformPath.FileName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer f.Close()
 
-	_, err = io.Copy(f, r)
+	n, err := io.Copy(f, r)
 	if err != nil {
-		return err
+		return 0, err
 	}
-
-	return nil
+	return n, nil
 }

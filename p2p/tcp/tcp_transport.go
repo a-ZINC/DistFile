@@ -25,10 +25,12 @@ type Config struct {
 
 type TCPTransport struct {
 	Config
-	listener net.Listener
+	Listener net.Listener
 
 	Mu    sync.RWMutex
-	Peers map[net.Addr]p2p.Peer
+	Peers map[string]p2p.Peer
+
+	Wg sync.WaitGroup
 }
 
 func NewTCPPeer(conn net.Conn, inbound bool) *TCPPeer {
@@ -42,6 +44,7 @@ func NewTCPTransport(cfg Config) *TCPTransport {
 	return &TCPTransport{
 		Config: cfg,
 		Mu:    sync.RWMutex{},
+		Wg:    sync.WaitGroup{},
 	}
 }
 
@@ -51,8 +54,8 @@ func (t *TCPTransport) ListenAndAccept() error {
 		return err
 	}
 	log.Printf("Listening on %s", t.Config.ListenerAddr)
-	t.listener = listener
-	t.Peers = make(map[net.Addr]p2p.Peer)
+	t.Listener = listener
+	t.Peers = make(map[string]p2p.Peer)
 
 	go t.handleAccept()
 	return nil
@@ -60,7 +63,7 @@ func (t *TCPTransport) ListenAndAccept() error {
 
 func (t *TCPTransport) handleAccept() {
 	for {
-		conn, err := t.listener.Accept()
+		conn, err := t.Listener.Accept()
 		if errors.Is(err, net.ErrClosed) {
 			return
 		}
@@ -86,14 +89,15 @@ func (t *TCPTransport) handleConnection(conn net.Conn, inbound bool) {
 	}
 	for {
 		message := &message.Message{}
-		log.Printf("Waiting to decode message from %v", conn.RemoteAddr())
 		err := gob.NewDecoder(conn).Decode(message)
-		log.Printf("Decoded message from %v: %v", conn.RemoteAddr(), message)
 		if err != nil {
 			log.Printf("Error decoding message: %v", err)
 			continue
 		}
+		t.Wg.Add(1)
 		t.MSGChan <- message
+		t.Wg.Wait()
+		log.Printf("Stream processed: %v", message)
 	}
 }
 
@@ -107,19 +111,19 @@ func (t *TCPTransport) Dial(addr string) error {
 }
 
 func (t *TCPTransport) Close() {
-	t.listener.Close()
+	t.Listener.Close()
 }
 
 func (t *TCPTransport) close(conn net.Conn) {
-	if peer, ok := t.Peers[conn.RemoteAddr()]; ok {
+	if peer, ok := t.Peers[conn.RemoteAddr().String()]; ok {
 		t.Mu.Lock()
-		delete(t.Peers, conn.RemoteAddr())
+		delete(t.Peers, conn.RemoteAddr().String())
 		t.Mu.Unlock()
 		if err := peer.Close(); err != nil {
 			log.Printf("Error closing conn: %v", err)
 		}
 	}
-	log.Printf("Closed peer: %v", t.Peers[conn.RemoteAddr()])
+	log.Printf("Closed peer: %v", t.Peers[conn.RemoteAddr().String()])
 }
 
 

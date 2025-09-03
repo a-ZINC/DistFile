@@ -5,7 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/gob"
 	"encoding/hex"
-	"log"
+	"log"	
 	"strings"
 	"time"
 
@@ -18,6 +18,7 @@ import (
 func init() {
 	gob.Register(&Payload{})
 	gob.Register(&message.Message{})
+	gob.Register(&message.BroadcastPayload{})
 }
 
 func pathTransform(key string, root string) *store.Path {
@@ -65,9 +66,10 @@ func main() {
 			log.Printf("Failed to start server: %v", err)
 		}
 	}()
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 	log.Printf("Both servers are ready")
-
+	log.Printf("server1 peers: %v", server1.cfg.transport.Peers)
+	log.Printf("server2 peers: %v", server2.cfg.transport.Peers)
 	buff := new(bytes.Buffer)
 	buff.WriteString("Hello, this is a private message.")
 	server2.SaveData("myPrivateMessage", buff)

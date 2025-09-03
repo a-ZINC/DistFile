@@ -28,7 +28,7 @@ func TestStore(t *testing.T) {
 	defer store.Clear()
 
 	buff := strings.NewReader("test data")
-	err := store.Write("test_key", buff)
+	_, err := store.Write("test_key", buff)
 	if err != nil {
 		t.Errorf("Failed to write stream: %v", err)
 	}

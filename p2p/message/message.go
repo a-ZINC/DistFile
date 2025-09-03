@@ -1,6 +1,15 @@
 package message
 
+var (
+	BroadcastMsg = "broadcast"
+	StreamMsg    = "stream"
+)
+
+type BroadcastPayload struct {
+	From string
+	Size int64
+}
 type Message struct {
-	From    string
-	Payload any
+	Type string
+	BroadcastPayload
 }
