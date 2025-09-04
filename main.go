@@ -1,11 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"encoding/gob"
 	"encoding/hex"
-	"log"	
+	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -70,8 +70,22 @@ func main() {
 	log.Printf("Both servers are ready")
 	log.Printf("server1 peers: %v", server1.cfg.transport.Peers)
 	log.Printf("server2 peers: %v", server2.cfg.transport.Peers)
-	buff := new(bytes.Buffer)
-	buff.WriteString("Hello, this is a private message.")
-	server2.SaveData("myPrivateMessage", buff)
+
+	if _, err := os.Stat("ex.txt"); err != nil {
+		f, err := os.Create("ex.txt")
+		if err != nil {
+			log.Printf("Failed to create file: %v", err)
+			return
+		}
+		for i := 0; i < 10000000; i++ {
+			f.WriteString("Hello, this is a sample file to test distributed file system. \n")
+		}
+	}
+	f, err := os.Open("ex.txt")
+	if err != nil {
+		log.Printf("Failed to open file: %v", err)
+		return
+	}
+	server2.SaveData("myPrivateMessage", f)
 	select {}
 }

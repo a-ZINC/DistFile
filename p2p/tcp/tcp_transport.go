@@ -97,7 +97,7 @@ func (t *TCPTransport) handleConnection(conn net.Conn, inbound bool) {
 		t.Wg.Add(1)
 		t.MSGChan <- message
 		t.Wg.Wait()
-		log.Printf("Stream processed: %v", message)
+		log.Printf("Normal messages released: %v", message)
 	}
 }
 

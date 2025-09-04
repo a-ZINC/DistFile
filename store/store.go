@@ -9,13 +9,13 @@ import (
 )
 
 type Path struct {
-	FileName   string
-	DirPath    string
+	FileName    string
+	DirPath     string
 	DefaultRoot string
 }
 
 type StoreOpts struct {
-	DefaultRoot      string
+	DefaultRoot       string
 	PathTransformFunc func(string, string) *Path
 }
 
@@ -97,10 +97,11 @@ func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 		return 0, err
 	}
 	defer f.Close()
-
+	log.Printf("Writing stream to %s", transformPath.getFullPath()+"/"+transformPath.FileName)
 	n, err := io.Copy(f, r)
 	if err != nil {
 		return 0, err
 	}
+	log.Printf("Wrote %d bytes to %s", n, transformPath.getFullPath()+"/"+transformPath.FileName)
 	return n, nil
 }

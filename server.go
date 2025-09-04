@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/a-ZINC/DistFile/p2p"
 	"github.com/a-ZINC/DistFile/p2p/message"
@@ -76,7 +75,7 @@ func (s *Server) handleMessage(msg *message.Message) {
 	log.Printf("Handling message: %v", msg)
 	switch msg.Type {
 	case message.BroadcastMsg:
-		 s.handleMessageStoredFile(msg)
+		s.handleMessageStoredFile(msg)
 	default:
 		log.Printf("Unknown message payload type: %T", msg)
 	}
@@ -84,17 +83,16 @@ func (s *Server) handleMessage(msg *message.Message) {
 
 func (s *Server) handleMessageStoredFile(msg *message.Message) {
 	log.Printf("Received stored file message: %v", msg)
-	peer, ok := s.cfg.transport.Peers[s.cfg.addr]
+	peer, ok := s.cfg.transport.Peers[msg.From]
 	log.Printf("peer: %v, server: %v", s.cfg.transport.Peers, s.cfg.addr)
 	if !ok {
 		log.Printf("Unknown peer: %v", msg.From)
 		return
 	}
-	if _, err := io.CopyN(io.Discard, peer, msg.Size); err != nil {
-		log.Printf("Error discarding message from %v: %v", msg.From, err)
+	if _, err := s.store.Write(msg.Key, io.LimitReader(peer, msg.Size)); err != nil {
+		log.Printf("Failed to store file from peer %v: %v", peer.RemoteAddr(), err)
 		return
 	}
-
 	s.cfg.transport.Wg.Done()
 	log.Printf("Handling stored file message: %v", msg)
 }
@@ -118,16 +116,25 @@ func (s *Server) StartNodes() error {
 	return nil
 }
 
-func (s *Server) Broadcast(msg *message.Message, r io.Reader) error {
-	var peers []io.Writer
+func (s *Server) Broadcast(size int64, key string, r io.Reader) error {
 	for _, peer := range s.cfg.transport.Peers {
-		peers = append(peers, peer)
-	}
+		log.Printf("Broadcasting message to peer: %v", peer.RemoteAddr())
+		message := &message.Message{
+			Type: message.BroadcastMsg,
+			BroadcastPayload: message.BroadcastPayload{
+				From: peer.LocalAddr().String(),
+				Size: size,
+				Key:  key,
+			},
+		}
 
-	writer := io.MultiWriter(peers...)
-	if err := gob.NewEncoder(writer).Encode(msg); err != nil {
-		log.Printf("Failed to broadcast message: %v", err)
-		return err
+		log.Printf("Broadcasting message: %v", message)
+		encoder := gob.NewEncoder(peer)
+
+		if err := encoder.Encode(message); err != nil {
+			log.Printf("Failed to send message to peer %v: %v", peer.RemoteAddr(), err)
+			continue
+		}
 	}
 	return nil
 }
@@ -135,29 +142,18 @@ func (s *Server) Broadcast(msg *message.Message, r io.Reader) error {
 func (s *Server) SaveData(key string, r io.Reader) error {
 
 	fileBuffer := new(bytes.Buffer)
-	teeReader := io.TeeReader(io.LimitReader(r, 10), fileBuffer)
+	teeReader := io.TeeReader(r, fileBuffer)
 	size, err := s.store.Write(key, teeReader)
 	if err != nil {
 		return err
 	}
 
-	message := &message.Message{
-		Type: message.BroadcastMsg,
-		BroadcastPayload: message.BroadcastPayload{
-			From: s.cfg.addr,
-			Size: size,
-		},
-	}
-
-	log.Printf("Broadcasting message: %v", message)
-	err = s.Broadcast(message, r)
+	err = s.Broadcast(size, key, r)
 	if err != nil {
 		return err
 	}
 
-	time.Sleep(3 * time.Second)
-
-	err = s.StreamToPeers(r)
+	err = s.StreamToPeers(fileBuffer)
 	if err != nil {
 		return err
 	}
@@ -165,18 +161,17 @@ func (s *Server) SaveData(key string, r io.Reader) error {
 	return nil
 }
 
-func (s *Server) StreamToPeers(r io.Reader) error {
-	var peers []io.Writer
+func (s *Server) StreamToPeers(fileBuffer *bytes.Buffer) error {
 	for _, p := range s.cfg.transport.Peers {
-		peers = append(peers, p)
-	}
-	log.Printf("Streaming data to %+v peers", peers)
-	writer := io.MultiWriter(peers...)
-	if _, err := io.Copy(writer, r); err != nil {
-		log.Printf("Failed to stream data to peers: %v", err)
-		return err
-	}
+		go func(peer p2p.Peer) {
+			_, err := io.Copy(peer, fileBuffer)
+			if err != nil {
+				log.Printf("Failed to stream to %v: %v", peer.RemoteAddr(), err)
+            } else {
+                log.Printf("Successfully streamed to %v", peer.RemoteAddr())
+            }
+        }(p)
+    }
 	log.Printf("Successfully streamed data to peers")
-	s.cfg.transport.Wg.Done()
 	return nil
 }
