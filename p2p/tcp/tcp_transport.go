@@ -7,7 +7,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/a-ZINC/DistFile/p2p"	
+	"github.com/a-ZINC/DistFile/p2p"
 	"github.com/a-ZINC/DistFile/p2p/message"
 )
 
@@ -20,7 +20,7 @@ type Config struct {
 	ListenerAddr string
 	HandShake    func(p2p.Peer) error
 	MSGChan      chan *message.Message
-	OnPeer      func(p2p.Peer) error
+	OnPeer       func(p2p.Peer) error
 }
 
 type TCPTransport struct {
@@ -35,7 +35,7 @@ type TCPTransport struct {
 
 func NewTCPPeer(conn net.Conn, inbound bool) *TCPPeer {
 	return &TCPPeer{
-		Conn:   conn,
+		Conn:    conn,
 		inbound: inbound,
 	}
 }
@@ -43,8 +43,8 @@ func NewTCPPeer(conn net.Conn, inbound bool) *TCPPeer {
 func NewTCPTransport(cfg Config) *TCPTransport {
 	return &TCPTransport{
 		Config: cfg,
-		Mu:    sync.RWMutex{},
-		Wg:    sync.WaitGroup{},
+		Mu:     sync.RWMutex{},
+		Wg:     sync.WaitGroup{},
 	}
 }
 
@@ -78,7 +78,7 @@ func (t *TCPTransport) handleAccept() {
 func (t *TCPTransport) handleConnection(conn net.Conn, inbound bool) {
 	defer t.close(conn)
 	peer := NewTCPPeer(conn, inbound)
-	
+
 	if err := t.Config.HandShake(peer); err != nil {
 	}
 	if t.OnPeer != nil {
@@ -125,8 +125,6 @@ func (t *TCPTransport) close(conn net.Conn) {
 	}
 	log.Printf("Closed peer: %v", t.Peers[conn.RemoteAddr().String()])
 }
-
-
 
 /*
 ----------------------------------------------------------------------------------------------------------------------

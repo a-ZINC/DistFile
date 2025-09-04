@@ -7,7 +7,9 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/a-ZINC/DistFile/p2p"
 	"github.com/a-ZINC/DistFile/p2p/message"
@@ -49,7 +51,7 @@ func NewServer(cfg ServerCfg, nodes ...string) *Server {
 }
 
 func (s *Server) Stop() {
-	close(s.quitCh)
+	s.cfg.transport.Close()
 }
 
 func (s *Server) Start() error {
@@ -66,6 +68,7 @@ func (s *Server) Start() error {
 		case <-s.quitCh:
 			s.cfg.transport.Close()
 			log.Printf("Server shutting down")
+			os.Exit(0)
 			return nil
 		}
 	}
@@ -86,13 +89,14 @@ func (s *Server) handleMessageStoredFile(msg *message.Message) {
 	peer, ok := s.cfg.transport.Peers[msg.From]
 	log.Printf("peer: %v, server: %v", s.cfg.transport.Peers, s.cfg.addr)
 	if !ok {
-		log.Printf("Unknown peer: %v", msg.From)
+		log.Printf("Peer not found for address: %s", msg.From)
 		return
 	}
 	if _, err := s.store.Write(msg.Key, io.LimitReader(peer, msg.Size)); err != nil {
 		log.Printf("Failed to store file from peer %v: %v", peer.RemoteAddr(), err)
 		return
 	}
+	log.Printf("Successfully stored file from peer %v with key %s", peer.RemoteAddr(), msg.Key)
 	s.cfg.transport.Wg.Done()
 	log.Printf("Handling stored file message: %v", msg)
 }
@@ -116,25 +120,27 @@ func (s *Server) StartNodes() error {
 	return nil
 }
 
-func (s *Server) Broadcast(size int64, key string, r io.Reader) error {
+func (s *Server) Broadcast(size int64, key string) error {
+	var wg sync.WaitGroup
+	wg.Add(len(s.cfg.transport.Peers))
+	defer wg.Wait()
 	for _, peer := range s.cfg.transport.Peers {
-		log.Printf("Broadcasting message to peer: %v", peer.RemoteAddr())
-		message := &message.Message{
-			Type: message.BroadcastMsg,
-			BroadcastPayload: message.BroadcastPayload{
-				From: peer.LocalAddr().String(),
-				Size: size,
-				Key:  key,
-			},
-		}
-
-		log.Printf("Broadcasting message: %v", message)
-		encoder := gob.NewEncoder(peer)
-
-		if err := encoder.Encode(message); err != nil {
-			log.Printf("Failed to send message to peer %v: %v", peer.RemoteAddr(), err)
-			continue
-		}
+		go func(p p2p.Peer) {
+			defer wg.Done()
+			msg := &message.Message{
+				Type: message.BroadcastMsg,
+				BroadcastPayload: message.BroadcastPayload{
+					From: p.LocalAddr().String(),
+					Size: size,
+					Key:  key,
+				},
+			}
+			if err := gob.NewEncoder(p).Encode(msg); err != nil {
+				log.Printf("Failed to send broadcast to %v: %v", p.RemoteAddr(), err)
+				return
+			}
+			log.Printf("Broadcasted message to %v: %v", p.RemoteAddr(), msg)
+		}(peer)
 	}
 	return nil
 }
@@ -148,12 +154,12 @@ func (s *Server) SaveData(key string, r io.Reader) error {
 		return err
 	}
 
-	err = s.Broadcast(size, key, r)
+	err = s.Broadcast(size, key)
 	if err != nil {
 		return err
 	}
-
-	err = s.StreamToPeers(fileBuffer)
+	time.Sleep(2 * time.Second) // TODO: Replace with proper sync mechanism
+	err = s.StreamToPeers(fileBuffer.Bytes())
 	if err != nil {
 		return err
 	}
@@ -161,17 +167,24 @@ func (s *Server) SaveData(key string, r io.Reader) error {
 	return nil
 }
 
-func (s *Server) StreamToPeers(fileBuffer *bytes.Buffer) error {
+func (s *Server) StreamToPeers(data []byte) error {
+	var wg sync.WaitGroup
+
 	for _, p := range s.cfg.transport.Peers {
-		go func(peer p2p.Peer) {
-			_, err := io.Copy(peer, fileBuffer)
+		wg.Add(1)
+		go func(peer p2p.Peer, dataToSend []byte) {
+			defer wg.Done()
+			reader := bytes.NewReader(dataToSend)
+			n, err := io.Copy(peer, reader)
 			if err != nil {
 				log.Printf("Failed to stream to %v: %v", peer.RemoteAddr(), err)
-            } else {
-                log.Printf("Successfully streamed to %v", peer.RemoteAddr())
-            }
-        }(p)
-    }
-	log.Printf("Successfully streamed data to peers")
+				return
+			}
+			log.Printf("Successfully streamed %d bytes to %v", n, peer.RemoteAddr())
+		}(p, data)
+	}
+
+	wg.Wait()
+	log.Printf("Successfully streamed data to all peers")
 	return nil
 }

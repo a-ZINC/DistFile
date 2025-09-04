@@ -77,7 +77,7 @@ func main() {
 			log.Printf("Failed to create file: %v", err)
 			return
 		}
-		for i := 0; i < 10000000; i++ {
+		for i := 0; i < 100; i++ {
 			f.WriteString("Hello, this is a sample file to test distributed file system. \n")
 		}
 	}
