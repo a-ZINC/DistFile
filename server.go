@@ -127,6 +127,7 @@ func (s *Server) Broadcast(size int64, key string) error {
 	for _, peer := range s.cfg.transport.Peers {
 		go func(p p2p.Peer) {
 			defer wg.Done()
+			peer.Write([]byte(message.MessageTypeBits))
 			msg := &message.Message{
 				Payload: message.StoreMessagePayload{
 					From: p.LocalAddr().String(),
@@ -173,17 +174,16 @@ func (s *Server) StreamToPeers(data []byte) error {
 		wg.Add(1)
 		go func(peer p2p.Peer, dataToSend []byte) {
 			defer wg.Done()
+			peer.Write([]byte(message.StreamTypeBits))
 			reader := bytes.NewReader(dataToSend)
-			n, err := io.Copy(peer, reader)
+			_, err := io.Copy(peer, reader)
 			if err != nil {
 				log.Printf("Failed to stream to %v: %v", peer.RemoteAddr(), err)
 				return
 			}
-			log.Printf("Successfully streamed %d bytes to %v", n, peer.RemoteAddr())
 		}(p, data)
 	}
 
 	wg.Wait()
-	log.Printf("Successfully streamed data to all peers")
 	return nil
 }

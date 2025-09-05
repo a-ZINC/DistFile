@@ -1,6 +1,9 @@
 package message
 
-
+const (
+	MessageTypeBits      =  "0x1"
+	StreamTypeBits       =  "0x2"
+)
 
 type StoreMessagePayload struct {
 	From string
@@ -12,5 +15,6 @@ type GetMessagePayload struct {
 	Key  string
 }
 type Message struct {
-	Payload interface{}
+	Payload  interface{}
+	IsStream bool
 }

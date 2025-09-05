@@ -1,13 +1,13 @@
 package tcp
 
 import (
-	"encoding/gob"
 	"errors"
 	"log"
 	"net"
 	"sync"
 
 	"github.com/a-ZINC/DistFile/p2p"
+	"github.com/a-ZINC/DistFile/p2p/decoder"
 	"github.com/a-ZINC/DistFile/p2p/message"
 )
 
@@ -89,14 +89,19 @@ func (t *TCPTransport) handleConnection(conn net.Conn, inbound bool) {
 	}
 	for {
 		message := &message.Message{}
-		err := gob.NewDecoder(conn).Decode(message)
+		err := decoder.Decode(conn, message)
 		if err != nil {
 			log.Printf("Error decoding message: %v", err)
 			continue
 		}
-		t.Wg.Add(1)
-		t.MSGChan <- message
-		t.Wg.Wait()
+		if message.IsStream {
+			log.Printf("Received stream message: %v", message)
+			t.Wg.Add(1)
+			t.Wg.Wait()
+			log.Printf("Stream message processed: %v", message)
+			continue
+		}
+		t.Config.MSGChan <- message
 		log.Printf("Normal messages released: %v", message)
 	}
 }

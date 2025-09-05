@@ -98,13 +98,13 @@ func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 		return 0, err
 	}
 	defer f.Close()
-	log.Printf("Writing stream to %s", transformPath.getFullPath()+"/"+transformPath.FileName)
+	// log.Printf("Writing stream to %s", transformPath.getFullPath()+"/"+transformPath.FileName)
 	n, err := io.Copy(f, r)
 	fmt.Printf("Copied %d bytes\n", n)
 	if err != nil {
 		log.Printf("Failed to write stream: %v", err)
 		return 0, err
 	}
-	log.Printf("Wrote %d bytes to %s", n, transformPath.getFullPath()+"/"+transformPath.FileName)
+	// log.Printf("Wrote %d bytes to %s", n, transformPath.getFullPath()+"/"+transformPath.FileName)
 	return n, nil
 }
