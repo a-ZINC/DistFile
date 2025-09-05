@@ -74,17 +74,17 @@ func (s *Server) Start() error {
 	}
 }
 
-func (s *Server) handleMessage(msg *message.Message) {
-	log.Printf("Handling message: %v", msg)
-	switch msg.Type {
-	case message.BroadcastMsg:
-		s.handleMessageStoredFile(msg)
+func (s *Server) handleMessage(payload *message.Message) {
+	log.Printf("Handling message: %v", payload)
+	switch payload.Payload.(type) {
+	case *message.StoreMessagePayload:
+		s.handleMessageStoredFile(payload.Payload.(*message.StoreMessagePayload))
 	default:
-		log.Printf("Unknown message payload type: %T", msg)
+		log.Printf("Unknown message payload type: %T", payload)
 	}
 }
 
-func (s *Server) handleMessageStoredFile(msg *message.Message) {
+func (s *Server) handleMessageStoredFile(msg *message.StoreMessagePayload) {
 	log.Printf("Received stored file message: %v", msg)
 	peer, ok := s.cfg.transport.Peers[msg.From]
 	log.Printf("peer: %v, server: %v", s.cfg.transport.Peers, s.cfg.addr)
@@ -128,8 +128,7 @@ func (s *Server) Broadcast(size int64, key string) error {
 		go func(p p2p.Peer) {
 			defer wg.Done()
 			msg := &message.Message{
-				Type: message.BroadcastMsg,
-				BroadcastPayload: message.BroadcastPayload{
+				Payload: message.StoreMessagePayload{
 					From: p.LocalAddr().String(),
 					Size: size,
 					Key:  key,

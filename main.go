@@ -1,11 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/gob"
 	"encoding/hex"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -18,7 +18,7 @@ import (
 func init() {
 	gob.Register(&Payload{})
 	gob.Register(&message.Message{})
-	gob.Register(&message.BroadcastPayload{})
+	gob.Register(&message.StoreMessagePayload{})
 }
 
 func pathTransform(key string, root string) *store.Path {
@@ -71,21 +71,23 @@ func main() {
 	log.Printf("server1 peers: %v", server1.cfg.transport.Peers)
 	log.Printf("server2 peers: %v", server2.cfg.transport.Peers)
 
-	if _, err := os.Stat("ex.txt"); err != nil {
-		f, err := os.Create("ex.txt")
-		if err != nil {
-			log.Printf("Failed to create file: %v", err)
-			return
-		}
-		for i := 0; i < 100; i++ {
-			f.WriteString("Hello, this is a sample file to test distributed file system. \n")
-		}
-	}
-	f, err := os.Open("ex.txt")
-	if err != nil {
-		log.Printf("Failed to open file: %v", err)
-		return
-	}
-	server2.SaveData("myPrivateMessage", f)
+	// if _, err := os.Stat("ex.txt"); err != nil {
+	// 	f, err := os.Create("ex.txt")
+	// 	if err != nil {
+	// 		log.Printf("Failed to create file: %v", err)
+	// 		return
+	// 	}
+	// 	for i := 0; i < 100; i++ {
+	// 		f.WriteString("Hello, this is a sample file to test distributed file system. \n")
+	// 	}
+	// }
+	// f, err := os.Open("ex.txt")
+	// if err != nil {
+	// 	log.Printf("Failed to open file: %v", err)
+	// 	return
+	// }
+
+	f := []byte("This is a private message from server2 to server1.")
+	server2.SaveData("myPrivateMessage", bytes.NewReader(f))
 	select {}
 }
